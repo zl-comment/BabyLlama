@@ -1,6 +1,6 @@
 from transformers import (
     AutoTokenizer,
-    AutoModelForCausalLM,
+    LlamaForCausalLM,
     Trainer,
     TrainingArguments,
     GenerationConfig
@@ -16,6 +16,7 @@ import wandb
 import json
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import datetime
+import os
 
 ############### 超参数设置 ###############
 LR = 1e-5  # 降低学习率以提高稳定性
@@ -423,7 +424,11 @@ def compute_distillation_metrics(student_model, teacher_logits, eval_dataset, to
             # 计算KL散度
             student_probs = F.log_softmax(student_logits / TEMPERATURE, dim=-1)
             teacher_probs = F.softmax(teacher_logits_batch / TEMPERATURE, dim=-1)
-            kl_div = F.kl_div(student_probs, teacher_probs, reduction='batchmean') * (TEMPERATURE ** 2)
+            kl_div = F.kl_div(
+                student_probs,
+                teacher_probs,
+                reduction='batchmean',
+            ) * (TEMPERATURE ** 2)
             
             # 计算交叉熵损失
             ce_loss = F.cross_entropy(student_logits.view(-1, student_logits.size(-1)), 
@@ -465,7 +470,7 @@ def main():
     if not TEACHER_LOGITS_PATH.exists():
         print("Generating teacher logits...")
         # 临时加载教师模型生成logits
-        teacher_model = AutoModelForCausalLM.from_pretrained(
+        teacher_model = LlamaForCausalLM.from_pretrained(
             TEACHER_MODEL_NAME,
             load_in_8bit=USE_8BIT,
             load_in_4bit=USE_4BIT,
@@ -497,9 +502,10 @@ def main():
     latest_checkpoint = get_latest_checkpoint()
     
     if latest_checkpoint is not None:
-        print(f"正在从检查点加载模型: {latest_checkpoint}")
-        student_model = AutoModelForCausalLM.from_pretrained(
-            latest_checkpoint,
+        model_path = os.path.join(latest_checkpoint, "complete_model")
+        print(f"正在从检查点加载模型: {model_path}")
+        student_model = LlamaForCausalLM.from_pretrained(
+            model_path,
             load_in_8bit=USE_8BIT,
             load_in_4bit=USE_4BIT,
             device_map="auto",
@@ -508,7 +514,7 @@ def main():
         )
     else:
         print(f"没有找到检查点，从原始模型加载: {STUDENT_MODEL_NAME}")
-        student_model = AutoModelForCausalLM.from_pretrained(
+        student_model = LlamaForCausalLM.from_pretrained(
             STUDENT_MODEL_NAME,
             load_in_8bit=USE_8BIT,
             load_in_4bit=USE_4BIT,
@@ -741,7 +747,7 @@ def main():
     
     # 加载原始模型进行比较（不使用量化）
     print("Loading original model for comparison...")
-    original_model = AutoModelForCausalLM.from_pretrained(
+    original_model = LlamaForCausalLM.from_pretrained(
         STUDENT_MODEL_NAME,
         torch_dtype=torch.float16,
         device_map="auto"
