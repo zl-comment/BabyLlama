@@ -144,7 +144,7 @@ def generate_response(model, tokenizer, prompt, max_length=128):
 
 def main():
     # 设置模型路径
-    model_path = "./models/vicuna-7b-distilled/final_model-5"
+    model_path = "./models/vicuna-7b-distilled/final_model-10"
     
     try:
         # 加载模型和分词器
